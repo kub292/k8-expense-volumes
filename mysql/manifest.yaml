@@ -1,16 +1,36 @@
+
+---
 apiVersion: v1
-kind: PersistentVolumeClaim
+kind: Service
+metadata:
+  name: mysql-headless
+  namespace: expense
+spec:
+  clusterIP: None # this is called headless service
+  selector:
+    component: mysql
+    project: expense
+    tier: db 
+  ports:
+  - protocol: TCP
+    port: 3306 #service-port
+    targetPort: 3306 #target-port
+
+---
+apiVersion: v1
+kind: Service
 metadata:
   name: mysql
   namespace: expense
 spec:
-  storageClassName: "expense-ebs" # Empty string must be explicitly set otherwise default StorageClass will be set
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 4Gi
-
+  selector:
+    component: mysql
+    project: expense
+    tier: db 
+  ports:
+  - protocol: TCP
+    port: 3306 #service-port
+    targetPort: 3306 #target-port
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -20,28 +40,34 @@ metadata:
 spec:
   selector:
     matchLabels:
+      # has to match .spec.template.metadata.labels
       component: mysql
       project: expense
-      tier: db  # has to match .spec.template.metadata.labels
-  serviceName: "nginx"
-  replicas: 3 # by default 1
+      tier: db 
+  serviceName: "mysql-headless" # provide headless service name
+  replicas: 2 # by default is 1
   template:
     metadata:
       labels:
+       # has to match .spec.selector.matchLabels
         component: mysql
         project: expense
-        tier: db
+        tier: db 
     spec:
       containers:
       - name: mysql
         image: joindevops/mysql:v1.0
-        ports:
-        - containerPort: 80
-          name: web
+        imagePullPolicy: Always
         volumeMounts:
         - name: mysql
           mountPath: /var/lib/mysql
-      volumes:
-      - name: mysql
-        persistentVolumeClaim:
-          claimName: mysql
+  # PVC declaration, it is mandatory
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "expense-ebs"
+      resources:
+        requests:
+          storage: 1G
